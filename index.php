@@ -258,7 +258,7 @@ if (empty($SESSION->wantsurl)) {
 }
 
 /// Redirect to alternative login URL if needed
-if (!empty($CFG->alternateloginurl)) {
+if (false && !empty($CFG->alternateloginurl)) {
     $loginurl = $CFG->alternateloginurl;
 
     if (strpos($SESSION->wantsurl, $loginurl) === 0) {
