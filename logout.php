@@ -26,7 +26,7 @@
 
 require_once('../config.php');
 
-$PAGE->set_url('/login/logout.php');
+$PAGE->set_url('/internallogin/logout.php');
 $PAGE->set_context(context_system::instance());
 
 $sesskey = optional_param('sesskey', '__notpresent__', PARAM_RAW); // we want not null default to prevent required sesskey warning
