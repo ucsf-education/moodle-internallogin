@@ -36,14 +36,14 @@ $systemcontext = context_system::instance();
 //HTTPS is required in this page when $CFG->loginhttps enabled
 $PAGE->https_required();
 
-$PAGE->set_url('/login/change_password.php', array('id'=>$id));
+$PAGE->set_url('/internallogin/change_password.php', array('id'=>$id));
 
 $PAGE->set_context($systemcontext);
 
 if ($return) {
     // this redirect prevents security warning because https can not POST to http pages
     if (empty($SESSION->wantsurl)
-            or stripos(str_replace('https://', 'http://', $SESSION->wantsurl), str_replace('https://', 'http://', $CFG->wwwroot.'/login/change_password.php')) === 0) {
+            or stripos(str_replace('https://', 'http://', $SESSION->wantsurl), str_replace('https://', 'http://', $CFG->wwwroot.'/internallogin/change_password.php')) === 0) {
         $returnto = "$CFG->wwwroot/user/view.php?id=$USER->id&course=$id";
     } else {
         $returnto = $SESSION->wantsurl;
@@ -62,7 +62,7 @@ if (!$course = $DB->get_record('course', array('id'=>$id))) {
 // require proper login; guest user can not change password
 if (!isloggedin() or isguestuser()) {
     if (empty($SESSION->wantsurl)) {
-        $SESSION->wantsurl = $CFG->httpswwwroot.'/login/change_password.php';
+        $SESSION->wantsurl = $CFG->httpswwwroot.'/internallogin/change_password.php';
     }
     redirect(get_login_url());
 }
