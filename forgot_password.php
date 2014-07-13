@@ -36,7 +36,7 @@ $token = optional_param('token', false, PARAM_ALPHANUM);
 //HTTPS is required in this page when $CFG->loginhttps enabled
 $PAGE->https_required();
 
-$PAGE->set_url('/login/forgot_password.php');
+$PAGE->set_url('/internallogin/forgot_password.php');
 $systemcontext = context_system::instance();
 $PAGE->set_context($systemcontext);
 
