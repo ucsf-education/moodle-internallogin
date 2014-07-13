@@ -38,7 +38,7 @@ if (!$authplugin->can_signup()) {
 //HTTPS is required in this page when $CFG->loginhttps enabled
 $PAGE->https_required();
 
-$PAGE->set_url('/login/signup.php');
+$PAGE->set_url('/internallogin/signup.php');
 $PAGE->set_context(context_system::instance());
 
 $mform_signup = $authplugin->signup_form();
