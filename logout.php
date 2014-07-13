@@ -34,7 +34,7 @@ $login   = optional_param('loginpage', 0, PARAM_BOOL);
 
 // can be overridden by auth plugins
 if ($login) {
-    $redirect = get_login_url();
+    $redirect = str_replace('/login/', '/internallogin/', get_login_url());
 } else {
     $redirect = $CFG->wwwroot.'/';
 }
