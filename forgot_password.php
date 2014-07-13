@@ -35,7 +35,7 @@ $p_username = optional_param('s', false, PARAM_RAW);
 //HTTPS is required in this page when $CFG->loginhttps enabled
 $PAGE->https_required();
 
-$PAGE->set_url('/login/forgot_password.php');
+$PAGE->set_url('/internallogin/forgot_password.php');
 $systemcontext = context_system::instance();
 $PAGE->set_context($systemcontext);
 
@@ -96,7 +96,7 @@ if ($p_secret !== false) {
 
         reset_login_count();
 
-        $changepasswordurl = "{$CFG->httpswwwroot}/login/change_password.php";
+        $changepasswordurl = "{$CFG->httpswwwroot}/internallogin/change_password.php";
         $a = new stdClass();
         $a->email = $user->email;
         $a->link = $changepasswordurl;
