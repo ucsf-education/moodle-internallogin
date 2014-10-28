@@ -28,7 +28,7 @@ if (!empty($CFG->loginpasswordautocomplete)) {
               echo html_writer::end_tag('div');
           }
         ?>
-        <form action="<?php echo $CFG->httpswwwroot; ?>/login/index.php" method="post" id="login" <?php echo $autocomplete; ?> >
+        <form action="<?php echo $CFG->httpswwwroot; ?>/internallogin/index.php" method="post" id="login" <?php echo $autocomplete; ?> >
           <div class="loginform">
             <div class="form-label"><label for="username"><?php print_string("username") ?></label></div>
             <div class="form-input">
