@@ -37,6 +37,7 @@ redirect_if_major_upgrade_required();
 
 $testsession = optional_param('testsession', 0, PARAM_INT); // test session works properly
 $cancel      = optional_param('cancel', 0, PARAM_BOOL);      // redirect to frontpage, needed for loginhttps
+$anchor      = optional_param('anchor', '', PARAM_RAW);      // Used to restore hash anchor to wantsurl.
 
 if ($cancel) {
     redirect(new moodle_url('/'));
@@ -120,6 +121,15 @@ if ($user !== false or $frm !== false or $errormsg !== '') {
     $frm = data_submitted();
 }
 
+// Restore the #anchor to the original wantsurl. Note that this
+// will only work for internal auth plugins, SSO plugins such as
+// SAML / CAS / OIDC will have to handle this correctly directly.
+if ($anchor && isset($SESSION->wantsurl) && strpos($SESSION->wantsurl, '#') === false) {
+    $wantsurl = new moodle_url($SESSION->wantsurl);
+    $wantsurl->set_anchor(substr($anchor, 1));
+    $SESSION->wantsurl = $wantsurl->out();
+}
+
 /// Check if the user has actually submitted login data to us
 
 if ($frm and isset($frm->username)) {                             // Login WITH cookies
@@ -127,7 +137,7 @@ if ($frm and isset($frm->username)) {                             // Login WITH 
     $frm->username = trim(core_text::strtolower($frm->username));
 
     if (is_enabled_auth('none') ) {
-        if ($frm->username !== clean_param($frm->username, PARAM_USERNAME)) {
+        if ($frm->username !== core_user::clean_field($frm->username, 'username')) {
             $errormsg = get_string('username').': '.get_string("invalidusername");
             $errorcode = 2;
             $user = null;
@@ -302,6 +312,7 @@ if (!isset($frm) or !is_object($frm)) {
 
 if (empty($frm->username) && $authsequence[0] != 'shibboleth') {  // See bug 5184
     if (!empty($_GET["username"])) {
+        // we do not want data from _POST here
         $frm->username = clean_param($_GET["username"], PARAM_RAW); // we do not want data from _POST here
     } else {
         $frm->username = get_moodle_cookie();
@@ -342,7 +353,7 @@ if (!empty($SESSION->loginerrormsg)) {
     if ($errormsg) {
         $SESSION->loginerrormsg = $errormsg;
     }
-    redirect(new moodle_url('/login/index.php'));
+    redirect(new moodle_url($CFG->httpswwwroot . '/login/index.php'));
 }
 
 $PAGE->set_title("$site->fullname: $loginsite");
