@@ -25,27 +25,23 @@
  */
 
 require('../config.php');
-require_once($CFG->dirroot.'/user/lib.php');
 require_once('change_password_form.php');
-require_once($CFG->libdir.'/authlib.php');
 
 $id     = optional_param('id', SITEID, PARAM_INT); // current course
 $return = optional_param('return', 0, PARAM_BOOL); // redirect after password change
-
-$systemcontext = context_system::instance();
 
 //HTTPS is required in this page when $CFG->loginhttps enabled
 $PAGE->https_required();
 
 $PAGE->set_url('/login/change_password.php', array('id'=>$id));
 
-$PAGE->set_context($systemcontext);
+$PAGE->set_context(context_system::instance());
 
 if ($return) {
     // this redirect prevents security warning because https can not POST to http pages
     if (empty($SESSION->wantsurl)
-            or stripos(str_replace('https://', 'http://', $SESSION->wantsurl), str_replace('https://', 'http://', $CFG->wwwroot.'/login/change_password.php')) === 0) {
-        $returnto = "$CFG->wwwroot/user/preferences.php?userid=$USER->id&course=$id";
+            or stripos(str_replace('https://', 'http://', $SESSION->wantsurl), str_replace('https://', 'http://', $CFG->wwwroot.'/login/change_password.php') === 0)) {
+        $returnto = "$CFG->wwwroot/user/view.php?id=$USER->id&course=$id";
     } else {
         $returnto = $SESSION->wantsurl;
     }
@@ -55,6 +51,8 @@ if ($return) {
 }
 
 $strparticipants = get_string('participants');
+
+$systemcontext = context_system::instance();
 
 if (!$course = $DB->get_record('course', array('id'=>$id))) {
     print_error('invalidcourseid');
@@ -68,17 +66,13 @@ if (!isloggedin() or isguestuser()) {
     redirect(get_login_url());
 }
 
-$PAGE->set_context(context_user::instance($USER->id));
-$PAGE->set_pagelayout('admin');
-$PAGE->set_course($course);
-
 // do not require change own password cap if change forced
 if (!get_user_preferences('auth_forcepasswordchange', false)) {
     require_capability('moodle/user:changeownpassword', $systemcontext);
 }
 
 // do not allow "Logged in as" users to change any passwords
-if (\core\session\manager::is_loggedinas()) {
+if (session_is_loggedinas()) {
     print_error('cannotcallscript');
 }
 
@@ -109,21 +103,12 @@ $navlinks = array();
 $navlinks[] = array('name' => $strparticipants, 'link' => "$CFG->wwwroot/user/index.php?id=$course->id", 'type' => 'misc');
 
 if ($mform->is_cancelled()) {
-    redirect($CFG->wwwroot.'/user/preferences.php?userid='.$USER->id.'&amp;course='.$course->id);
+    redirect($CFG->wwwroot.'/user/view.php?id='.$USER->id.'&amp;course='.$course->id);
 } else if ($data = $mform->get_data()) {
 
     if (!$userauth->user_update_password($USER, $data->newpassword1)) {
         print_error('errorpasswordupdate', 'auth');
     }
-
-    user_add_password_history($USER->id, $data->newpassword1);
-
-    if (!empty($CFG->passwordchangelogout)) {
-        \core\session\manager::kill_user_sessions($USER->id, session_id());
-    }
-
-    // Reset login lockout - we want to prevent any accidental confusion here.
-    login_unlock_account($USER);
 
     // register success changing password
     unset_user_preference('auth_forcepasswordchange', $USER);
@@ -131,10 +116,14 @@ if ($mform->is_cancelled()) {
 
     $strpasswordchanged = get_string('passwordchanged');
 
+    add_to_log($course->id, 'user', 'change password', "view.php?id=$USER->id&amp;course=$course->id", "$USER->id");
+
     $fullname = fullname($USER, true);
 
+    $PAGE->navbar->add($fullname, new moodle_url('/user/view.php', array('id'=>$USER->id, 'course'=>$course->id)));
+    $PAGE->navbar->add($strpasswordchanged);
     $PAGE->set_title($strpasswordchanged);
-    $PAGE->set_heading(fullname($USER));
+    $PAGE->set_heading($COURSE->fullname);
     echo $OUTPUT->header();
 
     notice($strpasswordchanged, new moodle_url($PAGE->url, array('return'=>1)));
@@ -150,8 +139,10 @@ $strchangepassword = get_string('changepassword');
 
 $fullname = fullname($USER, true);
 
+$PAGE->navbar->add($fullname, new moodle_url('/user/view.php', array('id'=>$USER->id, 'course'=>$course->id)));
+$PAGE->navbar->add($strchangepassword);
 $PAGE->set_title($strchangepassword);
-$PAGE->set_heading($fullname);
+$PAGE->set_heading($COURSE->fullname);
 echo $OUTPUT->header();
 
 if (get_user_preferences('auth_forcepasswordchange')) {
