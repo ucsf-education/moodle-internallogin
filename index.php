@@ -37,6 +37,7 @@ redirect_if_major_upgrade_required();
 
 $testsession = optional_param('testsession', 0, PARAM_INT); // test session works properly
 $cancel      = optional_param('cancel', 0, PARAM_BOOL);      // redirect to frontpage, needed for loginhttps
+$anchor      = optional_param('anchor', '', PARAM_RAW);      // Used to restore hash anchor to wantsurl.
 
 if ($cancel) {
     redirect(new moodle_url('/'));
@@ -118,6 +119,15 @@ if ($user !== false or $frm !== false or $errormsg !== '') {
 
 } else {
     $frm = data_submitted();
+}
+
+// Restore the #anchor to the original wantsurl. Note that this
+// will only work for internal auth plugins, SSO plugins such as
+// SAML / CAS / OIDC will have to handle this correctly directly.
+if ($anchor && isset($SESSION->wantsurl) && strpos($SESSION->wantsurl, '#') === false) {
+    $wantsurl = new moodle_url($SESSION->wantsurl);
+    $wantsurl->set_anchor(substr($anchor, 1));
+    $SESSION->wantsurl = $wantsurl->out();
 }
 
 /// Check if the user has actually submitted login data to us
@@ -205,7 +215,7 @@ if ($frm and isset($frm->username)) {                             // Login WITH 
     /// check if user password has expired
     /// Currently supported only for ldap-authentication module
         $userauth = get_auth_plugin($USER->auth);
-        if (!empty($userauth->config->expiration) and $userauth->config->expiration == 1) {
+        if (!isguestuser() and !empty($userauth->config->expiration) and $userauth->config->expiration == 1) {
             if ($userauth->can_change_password()) {
                 $passwordchangeurl = $userauth->change_password_url();
                 if (!$passwordchangeurl) {
@@ -258,15 +268,16 @@ if ($session_has_timed_out and !data_submitted()) {
 /// First, let's remember where the user was trying to get to before they got here
 
 if (empty($SESSION->wantsurl)) {
-    $SESSION->wantsurl = (array_key_exists('HTTP_REFERER',$_SERVER) &&
-                          $_SERVER["HTTP_REFERER"] != $CFG->wwwroot &&
-                          $_SERVER["HTTP_REFERER"] != $CFG->wwwroot.'/' &&
-                          $_SERVER["HTTP_REFERER"] != $CFG->httpswwwroot.'/login/' &&
-                          strpos($_SERVER["HTTP_REFERER"], $CFG->httpswwwroot.'/login/?') !== 0 &&
-                          strpos($_SERVER["HTTP_REFERER"], $CFG->httpswwwroot.'/login/index.php') !== 0 &&
-                          clean_param($_SERVER['HTTP_REFERER'], PARAM_LOCALURL) != '')
-                          // There might be some extra params such as ?lang=.
-        ? $_SERVER["HTTP_REFERER"] : NULL;
+    $SESSION->wantsurl = null;
+    $referer = get_local_referer(false);
+    if ($referer &&
+            $referer != $CFG->wwwroot &&
+            $referer != $CFG->wwwroot . '/' &&
+            $referer != $CFG->httpswwwroot . '/login/' &&
+            strpos($referer, $CFG->httpswwwroot . '/login/?') !== 0 &&
+            strpos($referer, $CFG->httpswwwroot . '/login/index.php') !== 0) { // There might be some extra params such as ?lang=.
+        $SESSION->wantsurl = $referer;
+    }
 }
 
 /// Redirect to alternative login URL if needed
@@ -341,7 +352,7 @@ if (!empty($SESSION->loginerrormsg)) {
     if ($errormsg) {
         $SESSION->loginerrormsg = $errormsg;
     }
-    redirect(new moodle_url('/login/index.php'));
+    redirect(new moodle_url($CFG->httpswwwroot . '/login/index.php'));
 }
 
 $PAGE->set_title("$site->fullname: $loginsite");

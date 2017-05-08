@@ -63,7 +63,7 @@ class login_signup_form extends moodleform {
         $namefields = useredit_get_required_name_fields();
         foreach ($namefields as $field) {
             $mform->addElement('text', $field, get_string($field), 'maxlength="100" size="30"');
-            $mform->setType($field, PARAM_TEXT);
+            $mform->setType($field, PARAM_NOTAGS);
             $stringid = 'missing' . $field;
             if (!get_string_manager()->string_exists($stringid, 'moodle')) {
                 $stringid = 'required';
@@ -93,6 +93,7 @@ class login_signup_form extends moodleform {
         if ($this->signup_captcha_enabled()) {
             $mform->addElement('recaptcha', 'recaptcha_element', get_string('security_question', 'auth'), array('https' => $CFG->loginhttps));
             $mform->addHelpButton('recaptcha_element', 'recaptcha', 'auth');
+            $mform->closeHeaderBefore('recaptcha_element');
         }
 
         if (!empty($CFG->sitepolicy)) {
@@ -111,6 +112,11 @@ class login_signup_form extends moodleform {
     function definition_after_data(){
         $mform = $this->_form;
         $mform->applyFilter('username', 'trim');
+
+        // Trim required name fields.
+        foreach (useredit_get_required_name_fields() as $field) {
+            $mform->applyFilter($field, 'trim');
+        }
     }
 
     function validation($data, $files) {
