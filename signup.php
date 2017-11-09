@@ -44,8 +44,16 @@ $PAGE->https_required();
 $PAGE->set_url('/login/signup.php');
 $PAGE->set_context(context_system::instance());
 
-// Override wanted URL, we do not want to end up here again if user clicks "Login".
-$SESSION->wantsurl = $CFG->wwwroot . '/';
+// If wantsurl is empty or /login/signup.php, override wanted URL.
+// We do not want to end up here again if user clicks "Login".
+if (empty($SESSION->wantsurl)) {
+    $SESSION->wantsurl = $CFG->wwwroot . '/';
+} else {
+    $wantsurl = new moodle_url($SESSION->wantsurl);
+    if ($PAGE->url->compare($wantsurl, URL_MATCH_BASE)) {
+        $SESSION->wantsurl = $CFG->wwwroot . '/';
+    }
+}
 
 if (isloggedin() and !isguestuser()) {
     // Prevent signing up when already logged in.
@@ -89,5 +97,17 @@ $PAGE->set_heading($SITE->fullname);
 
 echo $OUTPUT->header();
 
-echo $OUTPUT->render($mform_signup);
+if ($mform_signup instanceof renderable) {
+    // Try and use the renderer from the auth plugin if it exists.
+    try {
+        $renderer = $PAGE->get_renderer('auth_' . $authplugin->authtype);
+    } catch (coding_exception $ce) {
+        // Fall back on the general renderer.
+        $renderer = $OUTPUT;
+    }
+    echo $renderer->render($mform_signup);
+} else {
+    // Fall back for auth plugins not using renderables.
+    $mform_signup->display();
+}
 echo $OUTPUT->footer();
