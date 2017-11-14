@@ -41,10 +41,10 @@ if (!$authplugin = signup_is_enabled()) {
 //HTTPS is required in this page when $CFG->loginhttps enabled
 $PAGE->https_required();
 
-$PAGE->set_url('/login/signup.php');
+$PAGE->set_url('/internallogin/signup.php');
 $PAGE->set_context(context_system::instance());
 
-// If wantsurl is empty or /login/signup.php, override wanted URL.
+// If wantsurl is empty or /internallogin/signup.php, override wanted URL.
 // We do not want to end up here again if user clicks "Login".
 if (empty($SESSION->wantsurl)) {
     $SESSION->wantsurl = $CFG->wwwroot . '/';
@@ -59,7 +59,7 @@ if (isloggedin() and !isguestuser()) {
     // Prevent signing up when already logged in.
     echo $OUTPUT->header();
     echo $OUTPUT->box_start();
-    $logout = new single_button(new moodle_url($CFG->httpswwwroot . '/login/logout.php',
+    $logout = new single_button(new moodle_url($CFG->httpswwwroot . '/internallogin/logout.php',
         array('sesskey' => sesskey(), 'loginpage' => 1)), get_string('logout'), 'post');
     $continue = new single_button(new moodle_url('/'), get_string('cancel'), 'get');
     echo $OUTPUT->confirm(get_string('cannotsignup', 'error', fullname($USER)), $logout, $continue);
