@@ -32,6 +32,8 @@ redirect_if_major_upgrade_required();
 $testsession = optional_param('testsession', 0, PARAM_INT); // test session works properly
 $anchor      = optional_param('anchor', '', PARAM_RAW);      // Used to restore hash anchor to wantsurl.
 
+$resendconfirmemail = optional_param('resendconfirmemail', false, PARAM_BOOL);
+
 $context = context_system::instance();
 $PAGE->set_url("$CFG->wwwroot/login/index.php");
 $PAGE->set_context($context);
@@ -66,13 +68,13 @@ if (!empty($SESSION->has_timed_out)) {
     $session_has_timed_out = false;
 }
 
-/// auth plugins may override these - SSO anyone?
 $frm  = false;
 $user = false;
 
 $authsequence = get_enabled_auth_plugins(true); // auths, in sequence
 foreach($authsequence as $authname) {
     $authplugin = get_auth_plugin($authname);
+    // The auth plugin's loginpage_hook() can eventually set $frm and/or $user.
     $authplugin->loginpage_hook();
 }
 
@@ -131,13 +133,14 @@ if ($frm and isset($frm->username)) {                             // Login WITH 
     }
 
     if ($user) {
-        //user already supplied by aut plugin prelogin hook
+        // The auth plugin has already provided the user via the loginpage_hook() called above.
     } else if (($frm->username == 'guest') and empty($CFG->guestloginbutton)) {
         $user = false;    /// Can't log in as guest if guest button is disabled
         $frm = false;
     } else {
         if (empty($errormsg)) {
-            $user = authenticate_user_login($frm->username, $frm->password, false, $errorcode);
+            $logintoken = isset($frm->logintoken) ? $frm->logintoken : '';
+            $user = authenticate_user_login($frm->username, $frm->password, false, $errorcode, $logintoken);
         }
     }
 
@@ -172,7 +175,22 @@ if ($frm and isset($frm->username)) {                             // Login WITH 
             $PAGE->set_heading($site->fullname);
             echo $OUTPUT->header();
             echo $OUTPUT->heading(get_string("mustconfirm"));
+            if ($resendconfirmemail) {
+                if (!send_confirmation_email($user)) {
+                    echo $OUTPUT->notification(get_string('emailconfirmsentfailure'), \core\output\notification::NOTIFY_ERROR);
+                } else {
+                    echo $OUTPUT->notification(get_string('emailconfirmsentsuccess'), \core\output\notification::NOTIFY_SUCCESS);
+                }
+            }
             echo $OUTPUT->box(get_string("emailconfirmsent", "", $user->email), "generalbox boxaligncenter");
+            $resendconfirmurl = new moodle_url('/login/index.php',
+                [
+                    'username' => $frm->username,
+                    'password' => $frm->password,
+                    'resendconfirmemail' => true
+                ]
+            );
+            echo $OUTPUT->single_button($resendconfirmurl, get_string('emailconfirmationresend'));
             echo $OUTPUT->footer();
             die;
         }
