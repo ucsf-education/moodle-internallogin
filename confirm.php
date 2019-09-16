@@ -34,7 +34,7 @@ $p = optional_param('p', '', PARAM_ALPHANUM);   // Old parameter:  secret
 $s = optional_param('s', '', PARAM_RAW);        // Old parameter:  username
 $redirect = optional_param('redirect', '', PARAM_LOCALURL);    // Where to redirect the browser once the user has been confirmed.
 
-$PAGE->set_url('/login/confirm.php');
+$PAGE->set_url('/internallogin/confirm.php');
 $PAGE->set_context(context_system::instance());
 
 if (!$authplugin = signup_get_user_confirmation_authplugin()) {
