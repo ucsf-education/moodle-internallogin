@@ -35,7 +35,7 @@ $anchor      = optional_param('anchor', '', PARAM_RAW);      // Used to restore 
 $resendconfirmemail = optional_param('resendconfirmemail', false, PARAM_BOOL);
 
 $context = context_system::instance();
-$PAGE->set_url("$CFG->wwwroot/login/index.php");
+$PAGE->set_url("$CFG->wwwroot/internallogin/index.php");
 $PAGE->set_context($context);
 $PAGE->set_pagelayout('login');
 
@@ -92,10 +92,10 @@ $PAGE->navbar->add($loginsite);
 if ($user !== false or $frm !== false or $errormsg !== '') {
     // some auth plugin already supplied full user, fake form data or prevented user login with error message
 
-} else if (!empty($SESSION->wantsurl) && file_exists($CFG->dirroot.'/login/weblinkauth.php')) {
+} else if (!empty($SESSION->wantsurl) && file_exists($CFG->dirroot.'/internallogin/weblinkauth.php')) {
     // Handles the case of another Moodle site linking into a page on this site
     //TODO: move weblink into own auth plugin
-    include($CFG->dirroot.'/login/weblinkauth.php');
+    include($CFG->dirroot.'/internallogin/weblinkauth.php');
     if (function_exists('weblink_auth')) {
         $user = weblink_auth($SESSION->wantsurl);
     }
@@ -183,7 +183,7 @@ if ($frm and isset($frm->username)) {                             // Login WITH 
                 }
             }
             echo $OUTPUT->box(get_string("emailconfirmsent", "", $user->email), "generalbox boxaligncenter");
-            $resendconfirmurl = new moodle_url('/login/index.php',
+            $resendconfirmurl = new moodle_url('/internallogin/index.php',
                 [
                     'username' => $frm->username,
                     'password' => $frm->password,
@@ -224,12 +224,12 @@ if ($frm and isset($frm->username)) {                             // Login WITH 
             if ($userauth->can_change_password()) {
                 $passwordchangeurl = $userauth->change_password_url();
                 if (!$passwordchangeurl) {
-                    $passwordchangeurl = $CFG->wwwroot.'/login/change_password.php';
+                    $passwordchangeurl = $CFG->wwwroot.'/internallogin/change_password.php';
                 } else {
                     $externalchangepassword = true;
                 }
             } else {
-                $passwordchangeurl = $CFG->wwwroot.'/login/change_password.php';
+                $passwordchangeurl = $CFG->wwwroot.'/internallogin/change_password.php';
             }
             $days2expire = $userauth->password_expire($USER->username);
             $PAGE->set_title("$site->fullname: $loginsite");
@@ -289,9 +289,9 @@ if (empty($SESSION->wantsurl)) {
     if ($referer &&
             $referer != $CFG->wwwroot &&
             $referer != $CFG->wwwroot . '/' &&
-            $referer != $CFG->wwwroot . '/login/' &&
-            strpos($referer, $CFG->wwwroot . '/login/?') !== 0 &&
-            strpos($referer, $CFG->wwwroot . '/login/index.php') !== 0) { // There might be some extra params such as ?lang=.
+            $referer != $CFG->wwwroot . '/internallogin/' &&
+            strpos($referer, $CFG->wwwroot . '/internallogin/?') !== 0 &&
+            strpos($referer, $CFG->wwwroot . '/internallogin/index.php') !== 0) { // There might be some extra params such as ?lang=.
         $SESSION->wantsurl = $referer;
     }
 }
@@ -346,7 +346,7 @@ if (!empty($SESSION->loginerrormsg)) {
     if ($errormsg) {
         $SESSION->loginerrormsg = $errormsg;
     }
-    redirect(new moodle_url('/login/index.php'));
+    redirect(new moodle_url('/internallogin/index.php'));
 }
 
 $PAGE->set_title("$site->fullname: $loginsite");
@@ -357,7 +357,7 @@ echo $OUTPUT->header();
 if (isloggedin() and !isguestuser()) {
     // prevent logging when already logged in, we do not want them to relogin by accident because sesskey would be changed
     echo $OUTPUT->box_start();
-    $logout = new single_button(new moodle_url('/login/logout.php', array('sesskey'=>sesskey(),'loginpage'=>1)), get_string('logout'), 'post');
+    $logout = new single_button(new moodle_url('/internallogin/logout.php', array('sesskey'=>sesskey(),'loginpage'=>1)), get_string('logout'), 'post');
     $continue = new single_button(new moodle_url('/'), get_string('cancel'), 'get');
     echo $OUTPUT->confirm(get_string('alreadyloggedin', 'error', fullname($USER)), $logout, $continue);
     echo $OUTPUT->box_end();
