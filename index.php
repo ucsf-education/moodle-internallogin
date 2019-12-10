@@ -291,7 +291,7 @@ if (empty($SESSION->wantsurl)) {
 }
 
 /// Redirect to alternative login URL if needed
-if (!empty($CFG->alternateloginurl)) {
+if (false /* disable alternate login */ and !empty($CFG->alternateloginurl)) {
     $loginurl = new moodle_url($CFG->alternateloginurl);
 
     $loginurlstr = $loginurl->out(false);
