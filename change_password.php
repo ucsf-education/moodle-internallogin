@@ -29,20 +29,21 @@ require_once($CFG->dirroot.'/user/lib.php');
 require_once('change_password_form.php');
 require_once($CFG->libdir.'/authlib.php');
 require_once($CFG->dirroot.'/webservice/lib.php');
+require_once('lib.php');
 
 $id     = optional_param('id', SITEID, PARAM_INT); // current course
 $return = optional_param('return', 0, PARAM_BOOL); // redirect after password change
 
 $systemcontext = context_system::instance();
 
-$PAGE->set_url('/internallogin/change_password.php', array('id'=>$id));
+$PAGE->set_url('/login/change_password.php', array('id'=>$id));
 
 $PAGE->set_context($systemcontext);
 
 if ($return) {
     // this redirect prevents security warning because https can not POST to http pages
     if (empty($SESSION->wantsurl)
-            or stripos(str_replace('https://', 'http://', $SESSION->wantsurl), str_replace('https://', 'http://', $CFG->wwwroot.'/internallogin/change_password.php')) === 0) {
+            or stripos(str_replace('https://', 'http://', $SESSION->wantsurl), str_replace('https://', 'http://', $CFG->wwwroot.'/login/change_password.php')) === 0) {
         $returnto = "$CFG->wwwroot/user/preferences.php?userid=$USER->id&course=$id";
     } else {
         $returnto = $SESSION->wantsurl;
@@ -61,7 +62,7 @@ if (!$course = $DB->get_record('course', array('id'=>$id))) {
 // require proper login; guest user can not change password
 if (!isloggedin() or isguestuser()) {
     if (empty($SESSION->wantsurl)) {
-        $SESSION->wantsurl = $CFG->wwwroot.'/internallogin/change_password.php';
+        $SESSION->wantsurl = $CFG->wwwroot.'/login/change_password.php';
     }
     redirect(get_login_url());
 }
@@ -132,6 +133,9 @@ if ($mform->is_cancelled()) {
     unset_user_preference('create_password', $USER);
 
     $strpasswordchanged = get_string('passwordchanged');
+
+    // Plugins can perform post password change actions once data has been validated.
+    core_login_post_change_password_requests($data);
 
     $fullname = fullname($USER, true);
 

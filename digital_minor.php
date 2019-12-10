@@ -34,7 +34,7 @@ if (!$authplugin || !\core_auth\digital_consent::is_age_digital_consent_verifica
 }
 
 $PAGE->set_context(context_system::instance());
-$PAGE->set_url($CFG->wwwroot.'/internallogin/digital_minor.php');
+$PAGE->set_url($CFG->wwwroot.'/login/digital_minor.php');
 
 if (isloggedin() and !isguestuser()) {
     // Prevent signing up when already logged in.
@@ -45,7 +45,7 @@ $cache = cache::make('core', 'presignup');
 $isminor = $cache->get('isminor');
 if ($isminor !== 'yes') {
     // Redirect when the signup session does not exists, minor check has not been done or the user is not a minor.
-    redirect(new moodle_url('/internallogin/index.php'));
+    redirect(new moodle_url('/login/index.php'));
 }
 
 $PAGE->navbar->add(get_string('login'));

@@ -33,10 +33,10 @@ if (!$authplugin = signup_is_enabled()) {
     print_error('notlocalisederrormessage', 'error', '', 'Sorry, you may not use this page.');
 }
 
-$PAGE->set_url('/internallogin/signup.php');
+$PAGE->set_url('/login/signup.php');
 $PAGE->set_context(context_system::instance());
 
-// If wantsurl is empty or /internallogin/signup.php, override wanted URL.
+// If wantsurl is empty or /login/signup.php, override wanted URL.
 // We do not want to end up here again if user clicks "Login".
 if (empty($SESSION->wantsurl)) {
     $SESSION->wantsurl = $CFG->wwwroot . '/';
@@ -51,7 +51,7 @@ if (isloggedin() and !isguestuser()) {
     // Prevent signing up when already logged in.
     echo $OUTPUT->header();
     echo $OUTPUT->box_start();
-    $logout = new single_button(new moodle_url('/internallogin/logout.php',
+    $logout = new single_button(new moodle_url('/login/logout.php',
         array('sesskey' => sesskey(), 'loginpage' => 1)), get_string('logout'), 'post');
     $continue = new single_button(new moodle_url('/'), get_string('cancel'), 'get');
     echo $OUTPUT->confirm(get_string('cannotsignup', 'error', fullname($USER)), $logout, $continue);
@@ -66,10 +66,10 @@ if (\core_auth\digital_consent::is_age_digital_consent_verification_enabled()) {
     $isminor = $cache->get('isminor');
     if ($isminor === false) {
         // The verification of age and location (minor) has not been done.
-        redirect(new moodle_url('/internallogin/verify_age_location.php'));
+        redirect(new moodle_url('/login/verify_age_location.php'));
     } else if ($isminor === 'yes') {
         // The user that attempts to sign up is a digital minor.
-        redirect(new moodle_url('/internallogin/digital_minor.php'));
+        redirect(new moodle_url('/login/digital_minor.php'));
     }
 }
 
@@ -85,6 +85,9 @@ if ($mform_signup->is_cancelled()) {
 } else if ($user = $mform_signup->get_data()) {
     // Add missing required fields.
     $user = signup_setup_new_user($user);
+
+    // Plugins can perform post sign up actions once data has been validated.
+    core_login_post_signup_requests($user);
 
     $authplugin->user_signup($user, true); // prints notice and link to login/index.php
     exit; //never reached

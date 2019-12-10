@@ -34,7 +34,7 @@ if (!$authplugin || !\core_auth\digital_consent::is_age_digital_consent_verifica
 }
 
 $PAGE->set_context(context_system::instance());
-$PAGE->set_url(new moodle_url('/internallogin/verify_age_location.php'));
+$PAGE->set_url(new moodle_url('/login/verify_age_location.php'));
 
 if (isloggedin() and !isguestuser()) {
     // Prevent signing up when already logged in.
@@ -45,10 +45,10 @@ $cache = cache::make('core', 'presignup');
 $isminor = $cache->get('isminor');
 if ($isminor === 'yes') {
     // The user that attempts to sign up is a digital minor.
-    redirect(new moodle_url('/internallogin/digital_minor.php'));
+    redirect(new moodle_url('/login/digital_minor.php'));
 } else if ($isminor === 'no') {
     // The user that attempts to sign up has already verified that they are not a digital minor.
-    redirect(new moodle_url('/internallogin/signup.php'));
+    redirect(new moodle_url('/login/signup.php'));
 }
 
 $PAGE->navbar->add(get_string('login'));
@@ -63,15 +63,15 @@ $mform = new \core_auth\form\verify_age_location_form();
 $page = new \core_auth\output\verify_age_location_page($mform);
 
 if ($mform->is_cancelled()) {
-    redirect(new moodle_url('/internallogin/index.php'));
+    redirect(new moodle_url('/login/index.php'));
 } else if ($data = $mform->get_data()) {
     try {
         $isminor = \core_auth\digital_consent::is_minor($data->age, $data->country);
         cache::make('core', 'presignup')->set('isminor', $isminor ? 'yes' : 'no');
         if ($isminor) {
-            redirect(new moodle_url('/internallogin/digital_minor.php'));
+            redirect(new moodle_url('/login/digital_minor.php'));
         } else {
-            redirect(new moodle_url('/internallogin/signup.php'));
+            redirect(new moodle_url('/login/signup.php'));
         }
     } catch (moodle_exception $e) {
         // Display a user-friendly error message.
