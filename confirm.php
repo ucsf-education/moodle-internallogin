@@ -24,21 +24,23 @@
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
-require(__DIR__ . '/../config.php');
-require(__DIR__ . '/lib.php');
-require_once($CFG->libdir . '/authlib.php');
+require('../config.php');
 
 $data = optional_param('data', '', PARAM_RAW);  // Formatted as:  secret/username
 
 $p = optional_param('p', '', PARAM_ALPHANUM);   // Old parameter:  secret
 $s = optional_param('s', '', PARAM_RAW);        // Old parameter:  username
-$redirect = optional_param('redirect', '', PARAM_LOCALURL);    // Where to redirect the browser once the user has been confirmed.
 
 $PAGE->set_url('/login/confirm.php');
 $PAGE->set_context(context_system::instance());
 
-if (!$authplugin = signup_get_user_confirmation_authplugin()) {
-    throw new moodle_exception('confirmationnotenabled');
+if (empty($CFG->registerauth)) {
+    print_error('cannotusepage2');
+}
+$authplugin = get_auth_plugin($CFG->registerauth);
+
+if (!$authplugin->can_confirm()) {
+    print_error('cannotusepage2');
 }
 
 if (!empty($data) || (!empty($p) && !empty($s))) {
@@ -62,7 +64,7 @@ if (!empty($data) || (!empty($p) && !empty($s))) {
         echo $OUTPUT->header();
         echo $OUTPUT->box_start('generalbox centerpara boxwidthnormal boxaligncenter');
         echo "<p>".get_string("alreadyconfirmed")."</p>\n";
-        echo $OUTPUT->single_button(core_login_get_return_url(), get_string('courses'));
+        echo $OUTPUT->single_button("$CFG->wwwroot/course/", get_string('courses'));
         echo $OUTPUT->box_end();
         echo $OUTPUT->footer();
         exit;
@@ -80,12 +82,10 @@ if (!empty($data) || (!empty($p) && !empty($s))) {
 
             \core\session\manager::apply_concurrent_login_limit($user->id, session_id());
 
-            // Check where to go, $redirect has a higher preference.
-            if (!empty($redirect)) {
-                if (!empty($SESSION->wantsurl)) {
-                    unset($SESSION->wantsurl);
-                }
-                redirect($redirect);
+            if ( ! empty($SESSION->wantsurl) ) {   // Send them where they were going.
+                $goto = $SESSION->wantsurl;
+                unset($SESSION->wantsurl);
+                redirect($goto);
             }
         }
 
@@ -96,7 +96,7 @@ if (!empty($data) || (!empty($p) && !empty($s))) {
         echo $OUTPUT->box_start('generalbox centerpara boxwidthnormal boxaligncenter');
         echo "<h3>".get_string("thanks").", ". fullname($USER) . "</h3>\n";
         echo "<p>".get_string("confirmed")."</p>\n";
-        echo $OUTPUT->single_button(core_login_get_return_url(), get_string('continue'));
+        echo $OUTPUT->single_button("$CFG->wwwroot/course/", get_string('courses'));
         echo $OUTPUT->box_end();
         echo $OUTPUT->footer();
         exit;

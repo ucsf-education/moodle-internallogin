@@ -24,9 +24,6 @@
  * @copyright  Peter Bulmer
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
-
-defined('MOODLE_INTERNAL') || die();
-
 define('PWRESET_STATUS_NOEMAILSENT', 1);
 define('PWRESET_STATUS_TOKENSENT', 2);
 define('PWRESET_STATUS_OTHEREMAILSENT', 3);
@@ -38,31 +35,130 @@ define('PWRESET_STATUS_ALREADYSENT', 4);
  *  Where they have supplied identifier, the function will check their status, and send email as appropriate.
  */
 function core_login_process_password_reset_request() {
-    global $OUTPUT, $PAGE;
+    global $DB, $OUTPUT, $CFG, $PAGE;
+    $systemcontext = context_system::instance();
     $mform = new login_forgot_password_form();
 
     if ($mform->is_cancelled()) {
         redirect(get_login_url());
 
     } else if ($data = $mform->get_data()) {
-
-        $username = $email = '';
+        // Requesting user has submitted form data.
+        // Next find the user account in the database which the requesting user claims to own.
         if (!empty($data->username)) {
-            $username = $data->username;
+            // Username has been specified - load the user record based on that.
+            $username = core_text::strtolower($data->username); // Mimic the login page process.
+            $userparams = array('username' => $username, 'mnethostid' => $CFG->mnet_localhost_id, 'deleted' => 0, 'suspended' => 0);
+            $user = $DB->get_record('user', $userparams);
         } else {
-            $email = $data->email;
-        }
-        list($status, $notice, $url) = core_login_process_password_reset($username, $email);
+            // Try to load the user record based on email address.
+            // this is tricky because
+            // 1/ the email is not guaranteed to be unique - TODO: send email with all usernames to select the account for pw reset
+            // 2/ mailbox may be case sensitive, the email domain is case insensitive - let's pretend it is all case-insensitive.
 
-        // Plugins can perform post forgot password actions once data has been validated.
-        core_login_post_forgot_password_requests($data);
+            $select = $DB->sql_like('email', ':email', false, true, false, '|') .
+                    " AND mnethostid = :mnethostid AND deleted=0 AND suspended=0";
+            $params = array('email' => $DB->sql_like_escape($data->email, '|'), 'mnethostid' => $CFG->mnet_localhost_id);
+            $user = $DB->get_record_select('user', $select, $params, '*', IGNORE_MULTIPLE);
+        }
+
+        // Target user details have now been identified, or we know that there is no such account.
+        // Send email address to account's email address if appropriate.
+        $pwresetstatus = PWRESET_STATUS_NOEMAILSENT;
+        if ($user and !empty($user->confirmed)) {
+            $userauth = get_auth_plugin($user->auth);
+            if (!$userauth->can_reset_password() or !is_enabled_auth($user->auth)
+              or !has_capability('moodle/user:changeownpassword', $systemcontext, $user->id)) {
+                if (send_password_change_info($user)) {
+                    $pwresetstatus = PWRESET_STATUS_OTHEREMAILSENT;
+                } else {
+                    print_error('cannotmailconfirm');
+                }
+            } else {
+                // The account the requesting user claims to be is entitled to change their password.
+                // Next, check if they have an existing password reset in progress.
+                $resetinprogress = $DB->get_record('user_password_resets', array('userid' => $user->id));
+                if (empty($resetinprogress)) {
+                    // Completely new reset request - common case.
+                    $resetrecord = core_login_generate_password_reset($user);
+                    $sendemail = true;
+                } else if ($resetinprogress->timerequested < (time() - $CFG->pwresettime)) {
+                    // Preexisting, but expired request - delete old record & create new one.
+                    // Uncommon case - expired requests are cleaned up by cron.
+                    $DB->delete_records('user_password_resets', array('id' => $resetinprogress->id));
+                    $resetrecord = core_login_generate_password_reset($user);
+                    $sendemail = true;
+                } else if (empty($resetinprogress->timererequested)) {
+                    // Preexisting, valid request. This is the first time user has re-requested the reset.
+                    // Re-sending the same email once can actually help in certain circumstances
+                    // eg by reducing the delay caused by greylisting.
+                    $resetinprogress->timererequested = time();
+                    $DB->update_record('user_password_resets', $resetinprogress);
+                    $resetrecord = $resetinprogress;
+                    $sendemail = true;
+                } else {
+                    // Preexisting, valid request. User has already re-requested email.
+                    $pwresetstatus = PWRESET_STATUS_ALREADYSENT;
+                    $sendemail = false;
+                }
+
+                if ($sendemail) {
+                    $sendresult = send_password_change_confirmation_email($user, $resetrecord);
+                    if ($sendresult) {
+                        $pwresetstatus = PWRESET_STATUS_TOKENSENT;
+                    } else {
+                        print_error('cannotmailconfirm');
+                    }
+                }
+            }
+        }
 
         // Any email has now been sent.
         // Next display results to requesting user if settings permit.
         echo $OUTPUT->header();
-        notice($notice, $url);
+
+        if (!empty($CFG->protectusernames)) {
+            // Neither confirm, nor deny existance of any username or email address in database.
+            // Print general (non-commital) message.
+            notice(get_string('emailpasswordconfirmmaybesent'), $CFG->wwwroot.'/index.php');
+            die; // Never reached.
+        } else if (empty($user)) {
+            // Protect usernames is off, and we couldn't find the user with details specified.
+            // Print failure advice.
+            notice(get_string('emailpasswordconfirmnotsent'), $CFG->wwwroot.'/forgot_password.php');
+            die; // Never reached.
+        } else if (empty($user->email)) {
+            // User doesn't have an email set - can't send a password change confimation email.
+            notice(get_string('emailpasswordconfirmnoemail'), $CFG->wwwroot.'/index.php');
+            die; // Never reached.
+        } else if ($pwresetstatus == PWRESET_STATUS_ALREADYSENT) {
+            // User found, protectusernames is off, but user has already (re) requested a reset.
+            // Don't send a 3rd reset email.
+            $stremailalreadysent = get_string('emailalreadysent');
+            notice($stremailalreadysent, $CFG->wwwroot.'/index.php');
+            die; // Never reached.
+        } else if ($pwresetstatus == PWRESET_STATUS_NOEMAILSENT) {
+            // User found, protectusernames is off, but user is not confirmed.
+            // Pretend we sent them an email.
+            // This is a big usability problem - need to tell users why we didn't send them an email.
+            // Obfuscate email address to protect privacy.
+            $protectedemail = preg_replace('/([^@]*)@(.*)/', '******@$2', $user->email);
+            $stremailpasswordconfirmsent = get_string('emailpasswordconfirmsent', '', $protectedemail);
+            notice($stremailpasswordconfirmsent, $CFG->wwwroot.'/index.php');
+            die; // Never reached.
+        } else {
+            // Confirm email sent. (Obfuscate email address to protect privacy).
+            $protectedemail = preg_replace('/([^@]*)@(.*)/', '******@$2', $user->email);
+            // This is a small usability problem - may be obfuscating the email address which the user has just supplied.
+            $stremailresetconfirmsent = get_string('emailresetconfirmsent', '', $protectedemail);
+            notice($stremailresetconfirmsent, $CFG->wwwroot.'/index.php');
+            die; // Never reached.
+        }
         die; // Never reached.
     }
+
+    // Make sure we really are on the https page when https login required.
+    $PAGE->verify_https_required();
 
     // DISPLAY FORM.
 
@@ -71,148 +167,6 @@ function core_login_process_password_reset_request() {
     $mform->display();
 
     echo $OUTPUT->footer();
-}
-
-/**
- * Process the password reset for the given user (via username or email).
- *
- * @param  string $username the user name
- * @param  string $email    the user email
- * @return array an array containing fields indicating the reset status, a info notice and redirect URL.
- * @since  Moodle 3.4
- */
-function core_login_process_password_reset($username, $email) {
-    global $CFG, $DB;
-
-    if (empty($username) && empty($email)) {
-        print_error('cannotmailconfirm');
-    }
-
-    // Next find the user account in the database which the requesting user claims to own.
-    if (!empty($username)) {
-        // Username has been specified - load the user record based on that.
-        $username = core_text::strtolower($username); // Mimic the login page process.
-        $userparams = array('username' => $username, 'mnethostid' => $CFG->mnet_localhost_id, 'deleted' => 0, 'suspended' => 0);
-        $user = $DB->get_record('user', $userparams);
-    } else {
-        // Try to load the user record based on email address.
-        // This is tricky because:
-        // 1/ the email is not guaranteed to be unique - TODO: send email with all usernames to select the account for pw reset
-        // 2/ mailbox may be case sensitive, the email domain is case insensitive - let's pretend it is all case-insensitive.
-        //
-        // The case-insensitive + accent-sensitive search may be expensive as some DBs such as MySQL cannot use the
-        // index in that case. For that reason, we first perform accent-insensitive search in a subselect for potential
-        // candidates (which can use the index) and only then perform the additional accent-sensitive search on this
-        // limited set of records in the outer select.
-        $sql = "SELECT *
-                  FROM {user}
-                 WHERE " . $DB->sql_equal('email', ':email1', false, true) . "
-                   AND id IN (SELECT id
-                                FROM {user}
-                               WHERE mnethostid = :mnethostid
-                                 AND deleted = 0
-                                 AND suspended = 0
-                                 AND " . $DB->sql_equal('email', ':email2', false, false) . ")";
-
-        $params = array(
-            'email1' => $email,
-            'email2' => $email,
-            'mnethostid' => $CFG->mnet_localhost_id,
-        );
-
-        $user = $DB->get_record_sql($sql, $params, IGNORE_MULTIPLE);
-    }
-
-    // Target user details have now been identified, or we know that there is no such account.
-    // Send email address to account's email address if appropriate.
-    $pwresetstatus = PWRESET_STATUS_NOEMAILSENT;
-    if ($user and !empty($user->confirmed)) {
-        $systemcontext = context_system::instance();
-
-        $userauth = get_auth_plugin($user->auth);
-        if (!$userauth->can_reset_password() or !is_enabled_auth($user->auth)
-          or !has_capability('moodle/user:changeownpassword', $systemcontext, $user->id)) {
-            if (send_password_change_info($user)) {
-                $pwresetstatus = PWRESET_STATUS_OTHEREMAILSENT;
-            } else {
-                print_error('cannotmailconfirm');
-            }
-        } else {
-            // The account the requesting user claims to be is entitled to change their password.
-            // Next, check if they have an existing password reset in progress.
-            $resetinprogress = $DB->get_record('user_password_resets', array('userid' => $user->id));
-            if (empty($resetinprogress)) {
-                // Completely new reset request - common case.
-                $resetrecord = core_login_generate_password_reset($user);
-                $sendemail = true;
-            } else if ($resetinprogress->timerequested < (time() - $CFG->pwresettime)) {
-                // Preexisting, but expired request - delete old record & create new one.
-                // Uncommon case - expired requests are cleaned up by cron.
-                $DB->delete_records('user_password_resets', array('id' => $resetinprogress->id));
-                $resetrecord = core_login_generate_password_reset($user);
-                $sendemail = true;
-            } else if (empty($resetinprogress->timererequested)) {
-                // Preexisting, valid request. This is the first time user has re-requested the reset.
-                // Re-sending the same email once can actually help in certain circumstances
-                // eg by reducing the delay caused by greylisting.
-                $resetinprogress->timererequested = time();
-                $DB->update_record('user_password_resets', $resetinprogress);
-                $resetrecord = $resetinprogress;
-                $sendemail = true;
-            } else {
-                // Preexisting, valid request. User has already re-requested email.
-                $pwresetstatus = PWRESET_STATUS_ALREADYSENT;
-                $sendemail = false;
-            }
-
-            if ($sendemail) {
-                $sendresult = send_password_change_confirmation_email($user, $resetrecord);
-                if ($sendresult) {
-                    $pwresetstatus = PWRESET_STATUS_TOKENSENT;
-                } else {
-                    print_error('cannotmailconfirm');
-                }
-            }
-        }
-    }
-
-    $url = $CFG->wwwroot.'/index.php';
-    if (!empty($CFG->protectusernames)) {
-        // Neither confirm, nor deny existance of any username or email address in database.
-        // Print general (non-commital) message.
-        $status = 'emailpasswordconfirmmaybesent';
-        $notice = get_string($status);
-    } else if (empty($user)) {
-        // Protect usernames is off, and we couldn't find the user with details specified.
-        // Print failure advice.
-        $status = 'emailpasswordconfirmnotsent';
-        $notice = get_string($status);
-        $url = $CFG->wwwroot.'/forgot_password.php';
-    } else if (empty($user->email)) {
-        // User doesn't have an email set - can't send a password change confimation email.
-        $status = 'emailpasswordconfirmnoemail';
-        $notice = get_string($status);
-    } else if ($pwresetstatus == PWRESET_STATUS_ALREADYSENT) {
-        // User found, protectusernames is off, but user has already (re) requested a reset.
-        // Don't send a 3rd reset email.
-        $status = 'emailalreadysent';
-        $notice = get_string($status);
-    } else if ($pwresetstatus == PWRESET_STATUS_NOEMAILSENT) {
-        // User found, protectusernames is off, but user is not confirmed.
-        // Pretend we sent them an email.
-        // This is a big usability problem - need to tell users why we didn't send them an email.
-        // Obfuscate email address to protect privacy.
-        $protectedemail = preg_replace('/([^@]*)@(.*)/', '******@$2', $user->email);
-        $status = 'emailpasswordconfirmsent';
-        $notice = get_string($status, '', $protectedemail);
-    } else {
-        // Confirm email sent. (Obfuscate email address to protect privacy).
-        $protectedemail = preg_replace('/([^@]*)@(.*)/', '******@$2', $user->email);
-        // This is a small usability problem - may be obfuscating the email address which the user has just supplied.
-        $status = 'emailresetconfirmsent';
-        $notice = get_string($status, '', $protectedemail);
-    }
-    return array($status, $notice, $url);
 }
 
 /**
@@ -232,7 +186,7 @@ function core_login_process_password_set($token) {
              WHERE upr.token = ?";
     $user = $DB->get_record_sql($sql, array($token));
 
-    $forgotpasswordurl = "{$CFG->wwwroot}/login/forgot_password.php";
+    $forgotpasswordurl = "{$CFG->httpswwwroot}/login/forgot_password.php";
     if (empty($user) or ($user->timerequested < (time() - $pwresettime - DAYSECS))) {
         // There is no valid reset request record - not even a recently expired one.
         // (suspicious)
@@ -263,7 +217,7 @@ function core_login_process_password_set($token) {
     }
 
     // Token is correct, and unexpired.
-    $mform = new login_set_password_form(null, $user);
+    $mform = new login_set_password_form(null, $user, 'post', '', 'autocomplete="yes"');
     $data = $mform->get_data();
     if (empty($data)) {
         // User hasn't submitted form, they got here directly from email link.
@@ -273,6 +227,7 @@ function core_login_process_password_set($token) {
         $setdata->username2 = $user->username;
         $setdata->token = $user->token;
         $mform->set_data($setdata);
+        $PAGE->verify_https_required();
         echo $OUTPUT->header();
         echo $OUTPUT->box(get_string('setpasswordinstructions'), 'generalbox boxwidthnormal boxaligncenter');
         $mform->display();
@@ -306,10 +261,6 @@ function core_login_process_password_set($token) {
 
         $urltogo = core_login_get_return_url();
         unset($SESSION->wantsurl);
-
-        // Plugins can perform post set password actions once data has been validated.
-        core_login_post_set_password_requests($data, $user);
-
         redirect($urltogo, get_string('passwordset'), 1);
     }
 }
@@ -360,247 +311,3 @@ function core_login_get_return_url() {
     }
     return $urltogo;
 }
-
-/**
- * Validates the forgot password form data.
- *
- * This is used by the forgot_password_form and by the core_auth_request_password_rest WS.
- * @param  array $data array containing the data to be validated (email and username)
- * @return array array of errors compatible with mform
- * @since  Moodle 3.4
- */
-function core_login_validate_forgot_password_data($data) {
-    global $CFG, $DB;
-
-    $errors = array();
-
-    if ((!empty($data['username']) and !empty($data['email'])) or (empty($data['username']) and empty($data['email']))) {
-        $errors['username'] = get_string('usernameoremail');
-        $errors['email']    = get_string('usernameoremail');
-
-    } else if (!empty($data['email'])) {
-        if (!validate_email($data['email'])) {
-            $errors['email'] = get_string('invalidemail');
-
-        } else {
-            try {
-                $user = get_complete_user_data('email', $data['email'], null, true);
-                if (empty($user->confirmed)) {
-                    send_confirmation_email($user);
-                    $errors['email'] = get_string('confirmednot');
-                }
-            } catch (dml_missing_record_exception $missingexception) {
-                // User not found. Show error when $CFG->protectusernames is turned off.
-                if (empty($CFG->protectusernames)) {
-                    $errors['email'] = get_string('emailnotfound');
-                }
-            } catch (dml_multiple_records_exception $multipleexception) {
-                // Multiple records found. Ask the user to enter a username instead.
-                $errors['email'] = get_string('forgottenduplicate');
-            }
-        }
-
-    } else {
-        if ($user = get_complete_user_data('username', $data['username'])) {
-            if (empty($user->confirmed)) {
-                send_confirmation_email($user);
-                $errors['email'] = get_string('confirmednot');
-            }
-        }
-        if (!$user and empty($CFG->protectusernames)) {
-            $errors['username'] = get_string('usernamenotfound');
-        }
-    }
-
-    return $errors;
-}
-
-/**
- * Plugins can create pre sign up requests.
- */
-function core_login_pre_signup_requests() {
-    $callbacks = get_plugins_with_function('pre_signup_requests');
-    foreach ($callbacks as $type => $plugins) {
-        foreach ($plugins as $plugin => $pluginfunction) {
-            $pluginfunction();
-        }
-    }
-}
-
-/**
- * Plugins can extend forms.
- */
-
- /** Inject form elements into change_password_form.
-  * @param mform $mform the form to inject elements into.
-  * @param stdClass $user the user object to use for context.
-  */
-function core_login_extend_change_password_form($mform, $user) {
-    $callbacks = get_plugins_with_function('extend_change_password_form');
-    foreach ($callbacks as $type => $plugins) {
-        foreach ($plugins as $plugin => $pluginfunction) {
-            $pluginfunction($mform, $user);
-        }
-    }
-}
-
- /** Inject form elements into set_password_form.
-  * @param mform $mform the form to inject elements into.
-  * @param stdClass $user the user object to use for context.
-  */
-function core_login_extend_set_password_form($mform, $user) {
-    $callbacks = get_plugins_with_function('extend_set_password_form');
-    foreach ($callbacks as $type => $plugins) {
-        foreach ($plugins as $plugin => $pluginfunction) {
-            $pluginfunction($mform, $user);
-        }
-    }
-}
-
- /** Inject form elements into forgot_password_form.
-  * @param mform $mform the form to inject elements into.
-  */
-function core_login_extend_forgot_password_form($mform) {
-    $callbacks = get_plugins_with_function('extend_forgot_password_form');
-    foreach ($callbacks as $type => $plugins) {
-        foreach ($plugins as $plugin => $pluginfunction) {
-            $pluginfunction($mform);
-        }
-    }
-}
-
- /** Inject form elements into signup_form.
-  * @param mform $mform the form to inject elements into.
-  */
-function core_login_extend_signup_form($mform) {
-    $callbacks = get_plugins_with_function('extend_signup_form');
-    foreach ($callbacks as $type => $plugins) {
-        foreach ($plugins as $plugin => $pluginfunction) {
-            $pluginfunction($mform);
-        }
-    }
-}
-
-/**
- * Plugins can add additional validation to forms.
- */
-
-/** Inject validation into change_password_form.
- * @param array $data the data array from submitted form values.
- * @param stdClass $user the user object to use for context.
- * @return array $errors the updated array of errors from validation.
- */
-function core_login_validate_extend_change_password_form($data, $user) {
-    $pluginsfunction = get_plugins_with_function('validate_extend_change_password_form');
-    $errors = array();
-    foreach ($pluginsfunction as $plugintype => $plugins) {
-        foreach ($plugins as $pluginfunction) {
-            $pluginerrors = $pluginfunction($data, $user);
-            $errors = array_merge($errors, $pluginerrors);
-        }
-    }
-    return $errors;
-}
-
-/** Inject validation into set_password_form.
- * @param array $data the data array from submitted form values.
- * @param stdClass $user the user object to use for context.
- * @return array $errors the updated array of errors from validation.
- */
-function core_login_validate_extend_set_password_form($data, $user) {
-    $pluginsfunction = get_plugins_with_function('validate_extend_set_password_form');
-    $errors = array();
-    foreach ($pluginsfunction as $plugintype => $plugins) {
-        foreach ($plugins as $pluginfunction) {
-            $pluginerrors = $pluginfunction($data, $user);
-            $errors = array_merge($errors, $pluginerrors);
-        }
-    }
-    return $errors;
-}
-
-/** Inject validation into forgot_password_form.
- * @param array $data the data array from submitted form values.
- * @return array $errors the updated array of errors from validation.
- */
-function core_login_validate_extend_forgot_password_form($data) {
-    $pluginsfunction = get_plugins_with_function('validate_extend_forgot_password_form');
-    $errors = array();
-    foreach ($pluginsfunction as $plugintype => $plugins) {
-        foreach ($plugins as $pluginfunction) {
-            $pluginerrors = $pluginfunction($data);
-            $errors = array_merge($errors, $pluginerrors);
-        }
-    }
-    return $errors;
-}
-
-/** Inject validation into signup_form.
- * @param array $data the data array from submitted form values.
- * @return array $errors the updated array of errors from validation.
- */
-function core_login_validate_extend_signup_form($data) {
-    $pluginsfunction = get_plugins_with_function('validate_extend_signup_form');
-    $errors = array();
-    foreach ($pluginsfunction as $plugintype => $plugins) {
-        foreach ($plugins as $pluginfunction) {
-            $pluginerrors = $pluginfunction($data);
-            $errors = array_merge($errors, $pluginerrors);
-        }
-    }
-    return $errors;
-}
-
-/**
- * Plugins can perform post submission actions.
- */
-
-/** Post change_password_form submission actions.
- * @param stdClass $data the data object from the submitted form.
- */
-function core_login_post_change_password_requests($data) {
-    $pluginsfunction = get_plugins_with_function('post_change_password_requests');
-    foreach ($pluginsfunction as $plugintype => $plugins) {
-        foreach ($plugins as $pluginfunction) {
-            $pluginfunction($data);
-        }
-    }
-}
-
-/** Post set_password_form submission actions.
- * @param stdClass $data the data object from the submitted form.
- * @param stdClass $user the user object for set_password context.
- */
-function core_login_post_set_password_requests($data, $user) {
-    $pluginsfunction = get_plugins_with_function('post_set_password_requests');
-    foreach ($pluginsfunction as $plugintype => $plugins) {
-        foreach ($plugins as $pluginfunction) {
-            $pluginfunction($data, $user);
-        }
-    }
-}
-
-/** Post forgot_password_form submission actions.
- * @param stdClass $data the data object from the submitted form.
- */
-function core_login_post_forgot_password_requests($data) {
-    $pluginsfunction = get_plugins_with_function('post_forgot_password_requests');
-    foreach ($pluginsfunction as $plugintype => $plugins) {
-        foreach ($plugins as $pluginfunction) {
-            $pluginfunction($data);
-        }
-    }
-}
-
-/** Post signup_form submission actions.
- * @param stdClass $data the data object from the submitted form.
- */
-function core_login_post_signup_requests($data) {
-    $pluginsfunction = get_plugins_with_function('post_signup_requests');
-    foreach ($pluginsfunction as $plugintype => $plugins) {
-        foreach ($plugins as $pluginfunction) {
-            $pluginfunction($data);
-        }
-    }
-}
-
