@@ -85,7 +85,7 @@ $frm  = false;
 $user = false;
 
 $authsequence = get_enabled_auth_plugins(true); // auths, in sequence
-foreach($authsequence as $authname) {
+foreach($authsequence as $authname) {  if ('cas' === $authname) { continue; }
     $authplugin = get_auth_plugin($authname);
     $authplugin->loginpage_hook();
 }
@@ -335,7 +335,7 @@ if (!empty($CFG->registerauth) or is_enabled_auth('none') or !empty($CFG->auth_i
 }
 
 $potentialidps = array();
-foreach($authsequence as $authname) {
+foreach($authsequence as $authname) {  if ('cas' === $authname) { continue; }
     $authplugin = get_auth_plugin($authname);
     $potentialidps = array_merge($potentialidps, $authplugin->loginpage_idp_list($SESSION->wantsurl));
 }
