@@ -26,7 +26,9 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-require_once $CFG->libdir.'/formslib.php';
+require_once($CFG->libdir.'/formslib.php');
+require_once($CFG->dirroot.'/user/lib.php');
+require_once('lib.php');
 
 class login_change_password_form extends moodleform {
 
@@ -51,7 +53,8 @@ class login_change_password_form extends moodleform {
         if ($policies) {
             $mform->addElement('static', 'passwordpolicyinfo', '', implode('<br />', $policies));
         }
-        $mform->addElement('password', 'password', get_string('oldpassword'));
+        $purpose = user_edit_map_field_purpose($USER->id, 'password');
+        $mform->addElement('password', 'password', get_string('oldpassword'), $purpose);
         $mform->addRule('password', get_string('required'), 'required', null, 'client');
         $mform->setType('password', PARAM_RAW);
 
@@ -63,10 +66,18 @@ class login_change_password_form extends moodleform {
         $mform->addRule('newpassword2', get_string('required'), 'required', null, 'client');
         $mform->setType('newpassword2', PARAM_RAW);
 
+        if (empty($CFG->passwordchangetokendeletion) and !empty(webservice::get_active_tokens($USER->id))) {
+            $mform->addElement('advcheckbox', 'signoutofotherservices', get_string('signoutofotherservices'));
+            $mform->addHelpButton('signoutofotherservices', 'signoutofotherservices');
+            $mform->setDefault('signoutofotherservices', 1);
+        }
 
         // hidden optional params
         $mform->addElement('hidden', 'id', 0);
         $mform->setType('id', PARAM_INT);
+
+        // Hook for plugins to extend form definition.
+        core_login_extend_change_password_form($mform, $USER);
 
         // buttons
         if (get_user_preferences('auth_forcepasswordchange')) {
@@ -80,9 +91,13 @@ class login_change_password_form extends moodleform {
     function validation($data, $files) {
         global $USER;
         $errors = parent::validation($data, $files);
+        $reason = null;
+
+        // Extend validation for any form extensions from plugins.
+        $errors = array_merge($errors, core_login_validate_extend_change_password_form($data, $USER));
 
         // ignore submitted username
-        if (!$user = authenticate_user_login($USER->username, $data['password'], true)) {
+        if (!$user = authenticate_user_login($USER->username, $data['password'], true, $reason, false)) {
             $errors['password'] = get_string('invalidlogin');
             return $errors;
         }
@@ -105,7 +120,7 @@ class login_change_password_form extends moodleform {
         }
 
         $errmsg = '';//prevents eclipse warnings
-        if (!check_password_policy($data['newpassword1'], $errmsg)) {
+        if (!check_password_policy($data['newpassword1'], $errmsg, $USER)) {
             $errors['newpassword1'] = $errmsg;
             $errors['newpassword2'] = $errmsg;
             return $errors;
