@@ -28,7 +28,7 @@ require_once($CFG->libdir.'/authlib.php');
 $userid = optional_param('u', 0, PARAM_INT);
 $secret = optional_param('s', '', PARAM_RAW);
 
-$PAGE->set_url('/login/unlock_account.php');
+$PAGE->set_url('/internallogin/unlock_account.php');
 $PAGE->set_context(context_system::instance());
 
 // Override wanted URL, we do not want to end up here again after login!

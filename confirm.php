@@ -31,7 +31,7 @@ $data = optional_param('data', '', PARAM_RAW);  // Formatted as:  secret/usernam
 $p = optional_param('p', '', PARAM_ALPHANUM);   // Old parameter:  secret
 $s = optional_param('s', '', PARAM_RAW);        // Old parameter:  username
 
-$PAGE->set_url('/login/confirm.php');
+$PAGE->set_url('/internallogin/confirm.php');
 $PAGE->set_context(context_system::instance());
 
 if (empty($CFG->registerauth)) {
