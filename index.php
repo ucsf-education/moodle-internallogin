@@ -198,8 +198,7 @@ if ($frm and isset($frm->username)) {                             // Login WITH 
                 [
                     'username' => $frm->username,
                     'password' => $frm->password,
-                    'resendconfirmemail' => true,
-                    'logintoken' => \core\session\manager::get_login_token()
+                    'resendconfirmemail' => true
                 ]
             );
             echo $OUTPUT->single_button($resendconfirmurl, get_string('emailconfirmationresend'));
