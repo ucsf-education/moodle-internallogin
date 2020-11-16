@@ -83,7 +83,7 @@ $frm  = false;
 $user = false;
 
 $authsequence = get_enabled_auth_plugins(true); // auths, in sequence
-foreach($authsequence as $authname) {
+foreach($authsequence as $authname) {  if ('cas' === $authname) { continue; }
     $authplugin = get_auth_plugin($authname);
     // The auth plugin's loginpage_hook() can eventually set $frm and/or $user.
     $authplugin->loginpage_hook();
